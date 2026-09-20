@@ -39,6 +39,16 @@ table tbody tr:nth-child(even) td{background:#F8FAFC}
 .compare-card h4{font-size:15px;font-weight:700;margin-bottom:8px;color:var(--primary-dark)}
 .compare-card p{font-size:13px;color:var(--text-secondary);line-height:1.75}
 
+/* 终极考核 · 填空题 */
+.fill-card{background:var(--card);border:2px solid var(--border);border-radius:var(--radius);padding:24px 28px;margin:16px 0;box-shadow:var(--shadow)}
+.fill-card.ok{border-color:var(--success);background:#F6FEFB}
+.fill-card .quiz-question{margin-bottom:14px}
+.fill-row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.fill-input{flex:1;min-width:180px;padding:12px 16px;border:2px solid var(--border);border-radius:var(--radius-sm);font-size:15px;font-family:inherit;line-height:1.5}
+.fill-input:focus{border-color:var(--primary-light);outline:none;box-shadow:0 0 0 3px rgba(99,102,241,.12)}
+.fill-input:disabled{background:#F1F5F9;color:#065F46;font-weight:600;border-color:#A7F3D0}
+.fill-hint{display:block;margin-top:8px;color:#92400E;background:#FFFBEB;border-left:3px solid var(--accent);padding:8px 12px;border-radius:0 6px 6px 0;font-size:13px;line-height:1.7}
+
 /* 章节测验里的「答错重做」提示区 */
 .quiz-retry{margin-top:10px}
 .quiz-retry .btn{margin-left:0}
@@ -70,4 +80,9 @@ table tbody tr:nth-child(even) td{background:#F8FAFC}
   .section-nav-buttons .btn{width:100%;text-align:center;padding:14px 24px;font-size:15px}
   .dialogue-input-area{padding-bottom:4px}
   .practice-textarea{min-height:150px}
+
+  /* 填空题在窄屏改为竖排，提交按钮占满整行 */
+  .fill-card{padding:18px 16px}
+  .fill-row{flex-direction:column;align-items:stretch}
+  .fill-row .btn,.fill-input{width:100%}
 }

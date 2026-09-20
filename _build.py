@@ -33,6 +33,7 @@ def build_app_data():
         'allowedHosts': ['ruanqiaoyun0-a11y.github.io', 'localhost', '127.0.0.1'],
         'sections': C.SECTIONS,
         'chapterQuizzes': C.CHAPTER_QUIZZES,
+        'finalFills': C.CH6_FILLS,
         'practiceDims': C.PRACTICE_DIMS,
         'finalSystemPrompt': C.FINAL_SYSTEM_PROMPT,
         'scoringPrompt': C.SCORING_PROMPT,
@@ -104,12 +105,25 @@ def main():
                 problems.append('第 %d 章第 %d 题字段缺失' % (i + 1, qi + 1))
             elif not (0 <= q['correct'] < len(q['opts'])):
                 problems.append('第 %d 章第 %d 题 correct 越界' % (i + 1, qi + 1))
+    # 填空题校验
+    if not C.CH6_FILLS:
+        problems.append('缺少终极考核填空题数据')
+    for fi, f in enumerate(C.CH6_FILLS):
+        if not all(k in f for k in ('q', 'answer', 'hint')):
+            problems.append('第 %d 道填空字段缺失' % (fi + 1))
+        elif not f['answer']:
+            problems.append('第 %d 道填空没有可接受答案' % (fi + 1))
+    if 'fillInput-' not in js:
+        problems.append('缺少填空题 DOM 生成模板')
+    if 'submitFill' not in js:
+        problems.append('缺少填空题提交处理函数')
     # 明文密钥
     if re.search(r'sk-[A-Za-z0-9]{20,}', html):
         problems.append('严重：index.html 中出现明文密钥 sk-...')
 
     print('章节数：', len(C.SECTIONS))
-    print('章节测验题总数：', sum(len(x) for x in C.CHAPTER_QUIZZES))
+    print('选择题总数：', sum(len(x) for x in C.CHAPTER_QUIZZES), '（含终极考核 %d 题）' % len(C.CHAPTER_QUIZZES[-1]))
+    print('填空题总数：', len(C.CH6_FILLS))
     print('练习维度数：', len(C.PRACTICE_DIMS), ' 权重和：', sum(d['max'] for d in C.PRACTICE_DIMS))
     print('index.html 字节数：', len(html.encode('utf-8')))
     if problems:
