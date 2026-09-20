@@ -1,0 +1,17 @@
+# mimo-proxy-worker — Cloudflare Worker 配置
+# 部署步骤见项目根目录《WORKER-部署说明.md》
+
+name = "mimo-proxy"
+main = "mimo-proxy-worker.js"
+compatibility_date = "2026-01-01"
+
+# ⛔ 密钥绝不写在这里。用命令行设置：
+#   npx wrangler secret put MIMO_API_KEY
+#
+# 如需用 vars 传非敏感配置，可取消下面注释：
+# [vars]
+# ALLOWED_ORIGINS = "https://ruanqiaoyun0-a11y.github.io"
+
+# 观察日志
+[observability]
+enabled = true

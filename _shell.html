@@ -1,0 +1,30 @@
+<body>
+<!-- Sidebar -->
+<div class="sidebar" id="sidebar">
+<button class="sidebar-close-btn" onclick="toggleSidebar()">✕</button>
+<div class="sidebar-header"><h3>LP 培训微课</h3><div class="course-title">异议处理实战</div></div>
+<div class="study-timer"><span class="timer-icon">⏱</span><div><div class="timer-display" id="timerDisplay">00:00</div><div class="timer-label">学习时长</div></div></div>
+<div class="sidebar-progress"><div class="progress-label"><span>学习进度</span><span id="progressPercent">0%</span></div><div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div></div>
+<div class="sidebar-nav" id="sidebarNav"></div>
+<div class="sidebar-footer">VIPTHINK · 国内 LP 培训</div>
+</div>
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+<div class="mobile-header" id="mobileHeader"><button style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer" onclick="toggleSidebar()">☰</button><span style="font-weight:700;font-size:15px" id="mhTitle">异议处理实战</span><span style="font-size:13px;color:#94a3b8" id="mhTimer">⏱ 00:00</span></div>
+<div class="main" id="mainContent"></div>
+
+<!-- Certificate -->
+<div class="cert-overlay" id="certOverlay">
+<div class="cert-paper" id="certPaper">
+<h1>🏆 结业证书</h1><div class="sub">CERTIFICATE OF COMPLETION</div>
+<div class="body"><p>兹证明</p><p class="name" id="certStudentName">请填写姓名</p><p>已完成 VIPTHINK 班主任培训课程</p><p class="course">「异议处理实战」</p><p class="score" id="certScore">综合评定：通过</p><p class="final-score" id="certFinalScore">终极考核得分：-- 分</p>
+<div class="cert-name-edit" id="certNameEdit" style="display:none;margin:16px auto 0;max-width:280px"><input type="text" id="certNameInput" placeholder="请输入你的姓名" style="width:100%;padding:10px 14px;border:2px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit;text-align:center" maxlength="20"><button class="btn btn-sm" style="margin-top:10px;width:100%" onclick="saveCertName()">✍️ 确认姓名</button></div></div>
+<div class="cert-footer"><span id="certDate"></span><span>VIPTHINK</span></div>
+<div class="cert-actions"><button class="btn" onclick="printCertificate()">🖨️ 打印证书</button><button class="btn btn-outline" onclick="closeCertificate()">关闭</button></div>
+</div></div>
+
+<button class="notes-toggle" onclick="toggleNotes()">📝</button>
+<div class="notes-panel" id="notesPanel">
+<h3>📝 学习笔记 — <span id="notesChapterLabel" style="font-weight:400;font-size:13px;color:var(--text-secondary)"></span></h3>
+<textarea id="notesTextarea" placeholder="在这里记录你的学习心得..."></textarea>
+<button class="btn btn-outline" onclick="toggleNotes()" style="margin-top:12px;width:100%">关闭</button>
+</div>

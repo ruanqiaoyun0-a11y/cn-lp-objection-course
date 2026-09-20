@@ -1,0 +1,73 @@
+/* ============================================================
+   《异议处理》微课 · 补充样式（叠加在参照课基础样式之上）
+   ============================================================ */
+
+/* 视频 */
+.video-wrapper{margin:24px 0}
+.video-label{font-size:14px;font-weight:600;color:var(--text);margin-bottom:10px}
+video{width:100%;border-radius:var(--radius-sm);background:#000;display:block}
+
+/* 话术模板（可填空位） */
+.script-tpl{background:#F1F5F9;border-left:4px solid var(--primary);padding:16px 20px;border-radius:8px;font-size:14px;line-height:2;color:#334155;margin:14px 0}
+.script-tpl .var{color:#B45309;font-weight:700;border-bottom:1px dashed #D97706;padding:0 2px}
+
+/* 家长原话（案例驱动） */
+.quote-line{background:#FEF3C7;border-radius:8px;padding:12px 16px;font-weight:600;color:#92400E;margin:12px 0;font-size:14px;line-height:1.8}
+.quote-line::before{content:'💬 家长原话：';font-weight:700}
+
+/* 反思框（成人学习：反思与经验激活） */
+.reflect-box{background:linear-gradient(135deg,#EEF2FF,#E0E7FF);border-left:4px solid var(--primary);padding:18px 22px;border-radius:8px;margin:20px 0;font-size:14px;line-height:1.9}
+.reflect-box .rt{font-weight:700;color:var(--primary-dark);display:block;margin-bottom:6px;font-size:15px}
+
+/* 场景激活框（章首） */
+.activate-box{background:linear-gradient(135deg,#FFF7ED,#FFEDD5);border:1px dashed #F59E0B;border-radius:10px;padding:18px 22px;margin:0 0 20px;font-size:14px;line-height:1.9}
+.activate-box .at{font-weight:700;color:#B45309;display:block;margin-bottom:6px;font-size:15px}
+
+/* 表格 */
+table{width:100%;border-collapse:collapse;font-size:13px}
+table th,table td{border:1px solid var(--border);padding:10px 12px;text-align:left;vertical-align:top;line-height:1.7}
+table th{background:#EEF2FF;font-weight:700;color:var(--primary-dark);white-space:nowrap}
+table tbody tr:nth-child(even) td{background:#F8FAFC}
+
+/* 四步法流程图（横向箭头） */
+.flow-steps.vertical{flex-direction:column}
+.flow-steps.vertical .flow-arrow{transform:rotate(90deg);align-self:center}
+
+/* 对比卡（性价比五对比） */
+.compare-grid{display:flex;gap:14px;flex-wrap:wrap;margin:18px 0}
+.compare-card{flex:1;min-width:200px;background:var(--card);border:1px solid var(--border);border-top:4px solid var(--primary);border-radius:var(--radius-sm);padding:18px;box-shadow:var(--shadow)}
+.compare-card h4{font-size:15px;font-weight:700;margin-bottom:8px;color:var(--primary-dark)}
+.compare-card p{font-size:13px;color:var(--text-secondary);line-height:1.75}
+
+/* 章节测验里的「答错重做」提示区 */
+.quiz-retry{margin-top:10px}
+.quiz-retry .btn{margin-left:0}
+
+/* 练习得分面板 */
+.practice-score-panel{display:none;margin-top:20px;padding:20px;background:#F8FAFC;border:1px solid var(--border);border-radius:10px}
+.practice-score-total{margin-top:14px;padding:14px;border-radius:8px;font-size:14px;font-weight:600;text-align:center}
+
+/* 视频未就绪提示 */
+.video-placeholder{background:#0F172A;color:#94A3B8;border-radius:8px;padding:28px;text-align:center;font-size:13px}
+
+@media (max-width:1024px){
+  .compare-grid,.flow-steps{flex-direction:column}
+  .compare-card{min-width:0}
+  .script-tpl,.quote-line,.reflect-box,.activate-box{font-size:13px;padding:14px 16px}
+  table{font-size:12px}
+  table th,table td{padding:8px}
+  /* 移动端：表头允许换行，表格设最小宽度后在 .table-wrap 内横向滚动，
+     避免列被压扁到不可读 */
+  table th{white-space:normal}
+  .table-wrap table{min-width:520px}
+
+  /* 移动端：章节按钮固定为底部操作栏，并为 sticky 栏预留底部空间，
+     避免遮挡对话输入区与练习输入框 */
+  .main{padding-bottom:100px}
+  .section-nav-buttons{flex-direction:column;gap:10px;position:sticky;bottom:0;z-index:20;
+    background:var(--bg);padding:12px 0;border-top:1px solid var(--border);margin-top:24px}
+  .section-nav-buttons>div{width:100%}
+  .section-nav-buttons .btn{width:100%;text-align:center;padding:14px 24px;font-size:15px}
+  .dialogue-input-area{padding-bottom:4px}
+  .practice-textarea{min-height:150px}
+}
