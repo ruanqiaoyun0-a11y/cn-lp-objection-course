@@ -13,6 +13,14 @@ let currentSection = 0;
 let completedSections = new Set();
 let chapterQuizDone = new Array(chapterQuizzes.length).fill(false);
 let chapterQuizAnswers = {};   // { 'chIdx_qi': { selected, isCorrect } }
+// 视频观看追踪：视频按 DOM 顺序编号，索引与所在章节一一对应
+// videoMeta[i] = { idx, chIdx, src }
+// videoWatched: Set<videoIdx> —— 已「完整观看」的视频
+// videoMaxTime: { videoIdx: seconds } —— 已连续观看到的最高播放位置
+let videoMeta = [];
+let videoWatched = new Set();
+let videoMaxTime = {};
+const VIDEO_WATCH_RATIO = 0.95;   // 播放至 95% 即视为看完（末段黑屏/片尾不计）
 let fillAnswers = {};          // { idx: { value, correct } } —— 终极考核填空题
 let fillDone = false;
 let practiceSubmitted = false;
@@ -62,6 +70,7 @@ let studySeconds = 0; let timerInterval = null;
 function init() {
   renderSidebar();
   renderSections();
+  initVideoTracking();
   loadProgress();
   startTimer();
   loadNotes();
@@ -80,8 +89,13 @@ function renderSidebar() {
 function updateSidebarLocks() {
   document.querySelectorAll('.nav-section').forEach((el, i) => {
     const check = canNavigateTo(i);
-    if (!check.ok && i !== currentSection) el.classList.add('locked');
-    else el.classList.remove('locked');
+    if (!check.ok && i !== currentSection) {
+      el.classList.add('locked');
+      el.setAttribute('title', check.msg || '尚未解锁');
+    } else {
+      el.classList.remove('locked');
+      el.removeAttribute('title');
+    }
   });
 }
 
@@ -94,7 +108,7 @@ function renderSections() {
       '<div class="section-nav-buttons">' +
         '<div>' + (i > 0 ? '<button class="btn btn-outline" onclick="navigateTo(' + (i - 1) + ')">← 上一章</button>' : '') + '</div>' +
         '<div>' + (i < courseData.sections.length - 1
-          ? '<button class="btn" onclick="markComplete(' + i + ');navigateTo(' + (i + 1) + ')">下一章 →</button>'
+          ? '<button class="btn" onclick="goNext(' + i + ')">下一章 →</button>'
           : '<button class="btn btn-success" id="completeCourseBtn" onclick="tryCompleteCourse(' + i + ')">✓ 完成课程</button>') +
         '</div>' +
       '</div>' +
@@ -104,6 +118,17 @@ function renderSections() {
   if (rc) rc.innerHTML = renderRoleplayHTML();
 }
 
+// 点击「下一章」：先校验本章视频与任务是否完成，再标记完成并跳转
+function goNext(i) {
+  const gate = chapterGate(i);
+  if (!gate.ok) {
+    showToast('🔒 第 ' + (i + 1) + ' 章尚未完成：' + gate.msg, 'warning');
+    return;
+  }
+  markComplete(i);
+  navigateTo(i + 1);
+}
+
 // 有测验数据的章节渲染选择题；末章额外渲染填空题
 function quizBlockFor(i, s) {
   let h = '';
@@ -111,6 +136,131 @@ function quizBlockFor(i, s) {
   if (hasQuiz) h += renderChapterQuiz(i);
   if (i === courseData.sections.length - 1) h += renderFillQuiz();
   return h;
+}
+
+// ============================================================
+// 视频完整观看追踪（解锁前置条件之一）
+// 规则：视频需播放至 95% 或触发 ended 才计为「已看完」；
+//      拖动进度条被禁止，快进会被拉回已连续观看的最高位置。
+// ============================================================
+function initVideoTracking() {
+  videoMeta = [];
+  let vi = 0;
+  courseData.sections.forEach((s, chIdx) => {
+    const vids = document.querySelectorAll('.section[data-section="' + chIdx + '"] video');
+    vids.forEach((v) => {
+      const meta = { idx: vi, chIdx: chIdx, src: videoSrcName(v) };
+      videoMeta.push(meta);
+      attachVideoGuards(v, meta);
+      vi++;
+    });
+  });
+}
+
+function videoSrcName(v) {
+  const src = v.querySelector('source');
+  return src ? src.getAttribute('src') : '';
+}
+
+function attachVideoGuards(v, meta) {
+  v.dataset.videoIdx = String(meta.idx);
+  // 禁止拖动：拖动后立刻回到「已连续观看的最高点」
+  v.addEventListener('seeking', () => {
+    const allow = videoMaxTime[meta.idx] || 0;
+    // 允许极小抖动（1 秒内），其余一律拉回
+    if (v.currentTime > allow + 1) {
+      v.currentTime = Math.min(allow, v.duration || allow);
+      if (!v.dataset.seekWarned || Date.now() - Number(v.dataset.seekWarned) > 4000) {
+        v.dataset.seekWarned = String(Date.now());
+        showToast('🔒 视频不可快进，请按顺序完整观看', 'warning');
+      }
+    }
+  });
+  // 记录观看进度
+  v.addEventListener('timeupdate', () => {
+    const t = v.currentTime;
+    if (!videoMaxTime[meta.idx] || t > videoMaxTime[meta.idx]) videoMaxTime[meta.idx] = t;
+    maybeMarkWatched(v, meta);
+  });
+  v.addEventListener('ended', () => { markVideoWatched(meta); });
+  v.addEventListener('loadedmetadata', () => { renderVideoStatus(meta.chIdx); });
+  // 从已看位置继续播放（刷新后不从头再来）
+  v.addEventListener('play', () => {
+    const allow = videoMaxTime[meta.idx] || 0;
+    if (allow > 2 && Math.abs(v.currentTime - allow) > 2) v.currentTime = allow;
+  });
+}
+
+function maybeMarkWatched(v, meta) {
+  const dur = v.duration;
+  if (!dur || !isFinite(dur) || dur <= 0) return;
+  const pos = videoMaxTime[meta.idx] || v.currentTime;
+  if (pos / dur >= VIDEO_WATCH_RATIO) markVideoWatched(meta);
+}
+
+function markVideoWatched(meta) {
+  if (videoWatched.has(meta.idx)) return;
+  videoWatched.add(meta.idx);
+  renderVideoStatus(meta.chIdx);
+  updateSidebarLocks();
+  saveProgress();
+  const left = chapterVideosLeft(meta.chIdx);
+  if (left === 0) {
+    showToast('🎬 第 ' + (meta.chIdx + 1) + ' 章视频已全部看完', 'success');
+  } else {
+    showToast('🎬 已看完 1 段视频（本章还有 ' + left + ' 段）', 'success');
+  }
+}
+
+// 某章尚未看完的视频数量
+function chapterVideosLeft(chIdx) {
+  return videoMeta.filter(m => m.chIdx === chIdx && !videoWatched.has(m.idx)).length;
+}
+function chapterVideosDone(chIdx) {
+  const total = videoMeta.filter(m => m.chIdx === chIdx).length;
+  return total > 0 && chapterVideosLeft(chIdx) === 0;
+}
+
+// 渲染某章的视频观看状态条（标题下方）
+function renderVideoStatus(chIdx) {
+  const mine = videoMeta.filter(m => m.chIdx === chIdx);
+  if (mine.length === 0) return;
+  const watched = mine.filter(m => videoWatched.has(m.idx)).length;
+  const allDone = watched === mine.length;
+  // 每段视频的角标
+  mine.forEach((m) => {
+    const v = document.querySelector('video[data-video-idx="' + m.idx + '"]');
+    if (!v) return;
+    const wrap = v.closest('.video-wrapper');
+    if (!wrap) return;
+    let flag = wrap.querySelector('.video-flag');
+    if (!flag) {
+      flag = document.createElement('div');
+      flag.className = 'video-flag';
+      wrap.insertBefore(flag, wrap.firstChild);
+    }
+    flag.textContent = videoWatched.has(m.idx) ? '✅ 已看完' : '⏳ 待完整观看';
+    flag.classList.toggle('done', videoWatched.has(m.idx));
+  });
+  // 状态条
+  const section = document.querySelector('.section[data-section="' + chIdx + '"]');
+  if (!section) return;
+  let bar = document.getElementById('videostatus-' + chIdx);
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.className = 'video-status-bar';
+    bar.id = 'videostatus-' + chIdx;
+    const firstWrap = section.querySelector('.video-wrapper');
+    if (firstWrap) section.insertBefore(bar, firstWrap);
+    else section.appendChild(bar);
+  }
+  bar.innerHTML = allDone
+    ? '<span class="vs-ok">🎬 本章 ' + mine.length + ' 段视频已全部完整观看</span>'
+    : '<span class="vs-pending">🔒 本章 ' + mine.length + ' 段视频已看完 ' + watched + ' 段，还剩 ' + (mine.length - watched) + ' 段需完整播放（不可拖动快进）</span>';
+}
+
+function restoreVideoUI() {
+  videoMeta.forEach((m) => { renderVideoStatus(m.chIdx); });
 }
 
 // ============================================================
@@ -127,8 +277,13 @@ function renderChapterQuiz(chIdx) {
   const tipText = isFinal
     ? '📋 请按顺序答完所有综合考核题（每题答对才能解锁下一题）'
     : '📋 请按顺序答完所有题目';
+  // 解锁规则说明（视频 + 测验双条件）
+  const unlockNote = isFinal
+    ? '本章为终极考核，需完成下方全部考核环节。'
+    : '🔓 解锁下一章需同时满足：① 本章视频全部完整观看（不可快进）② 本章测验全部答对。';
   return '<div class="card" style="border-top:4px solid var(--primary);" id="chquizwrap-' + chIdx + '">' +
     '<h2 style="margin-bottom:8px;">' + title + '</h2>' +
+    '<p style="margin:0 0 8px 0;font-size:13px;color:var(--text-secondary);background:#EEF2FF;border-left:3px solid var(--primary);padding:8px 12px;border-radius:4px">' + unlockNote + '</p>' +
     '<p style="margin:0 0 12px 0;font-size:13px;color:var(--text-secondary);background:#FFF7ED;border-left:3px solid #F59E0B;padding:8px 12px;border-radius:4px">🔒 串行作答：第 1 题答对后才能解锁第 2 题，以此类推。答错的题可以点「重新作答」再做一次。</p>' +
     qs.map((q, qi) =>
       '<div class="quiz-card' + (qi > 0 && !isPreviousQuestionCorrect(chIdx, qi) ? ' locked' : '') + '" id="chquiz-' + chIdx + '-' + qi + '" data-answered="false">' +
@@ -227,8 +382,13 @@ function checkChapterQuizComplete(chIdx) {
   if (!allCorrect) return;
   chapterQuizDone[chIdx] = true;
   refreshChapterQuizStatus(chIdx);
-  showToast('🎉 ' + (chIdx === courseData.sections.length - 1 ? '综合考核题' : '第 ' + (chIdx + 1) + ' 章测验') + '全部通过！', 'success');
   updateSidebarLocks();
+  const left = chapterVideosLeft(chIdx);
+  if (left > 0) {
+    showToast('📝 第 ' + (chIdx + 1) + ' 章测验已全部答对！还有 ' + left + ' 段视频未完整观看，看完即可解锁下一章', 'warning');
+  } else {
+    showToast('🎉 ' + (chIdx === courseData.sections.length - 1 ? '综合考核题' : '第 ' + (chIdx + 1) + ' 章测验') + '全部通过，且视频已看完！', 'success');
+  }
   saveProgress();
 }
 
@@ -238,10 +398,16 @@ function refreshChapterQuizStatus(chIdx) {
   if (!el) return;
   const done = !!chapterQuizDone[chIdx];
   const isFinal = (chIdx === courseData.sections.length - 1);
+  const left = chapterVideosLeft(chIdx);
+  const total = videoMeta.filter(m => m.chIdx === chIdx).length;
+  let extra = '';
+  if (total > 0 && left > 0) {
+    extra = '<div style="margin-top:6px;font-size:12.5px;color:#B45309;">🔒 本章还有 ' + left + ' 段视频未完整观看，看完后才能进入下一章</div>';
+  }
   el.style.background = done ? '#ECFDF5' : '#F8FAFC';
-  el.innerHTML = done
+  el.innerHTML = (done
     ? '<span style="color:#065F46;font-weight:600;">' + (isFinal ? '✅ 综合考核题已全部通过！' : '✅ 本章测验已全部通过！') + '</span>'
-    : '<span style="color:#64748B;">' + (isFinal ? '📋 请按顺序答完所有综合考核题（每题答对才能解锁下一题）' : '📋 请按顺序答完所有题目') + '</span>';
+    : '<span style="color:#64748B;">' + (isFinal ? '📋 请按顺序答完所有综合考核题（每题答对才能解锁下一题）' : '📋 请按顺序答完所有题目') + '</span>') + extra;
 }
 
 // ============================================================
@@ -410,10 +576,12 @@ function submitPractice() {
 
   const totalEl = document.getElementById('practiceScoreTotal');
   const passed = total >= 60;
+  const vidsLeft = chapterVideosLeft(2);
   totalEl.style.background = passed ? '#ECFDF5' : '#FEF2F2';
   totalEl.style.color = passed ? '#065F46' : '#991B1B';
   totalEl.innerHTML = passed
-    ? '✅ 本次得分 ' + total + ' 分 — 已通过本章练习，可进入下一章'
+    ? ('✅ 本次得分 ' + total + ' 分 — 已通过本章练习'
+       + (vidsLeft > 0 ? '；另有 ' + vidsLeft + ' 段视频未完整观看，看完后可进入下一章' : '，且视频已看完，可进入下一章'))
     : '本次得分 ' + total + ' 分 — 尚未通过，请对照「参考要点」补充后再提交一次';
 
   document.getElementById('practiceScorePanel').style.display = 'block';
@@ -454,10 +622,12 @@ function restorePracticeUI() {
   const totalEl = document.getElementById('practiceScoreTotal');
   if (totalEl) {
     const passed = practiceScore >= 60;
+    const vidsLeft = chapterVideosLeft(2);
     totalEl.style.background = passed ? '#ECFDF5' : '#FEF2F2';
     totalEl.style.color = passed ? '#065F46' : '#991B1B';
     totalEl.innerHTML = passed
-      ? '✅ 本次得分 ' + practiceScore + ' 分 — 已通过本章练习'
+      ? ('✅ 本次得分 ' + practiceScore + ' 分 — 已通过本章练习'
+         + (vidsLeft > 0 ? '；另有 ' + vidsLeft + ' 段视频未完整观看，看完后可进入下一章' : '，且视频已看完，可进入下一章'))
       : '本次得分 ' + practiceScore + ' 分 — 尚未通过，请对照「参考要点」补充后再提交一次';
   }
 }
@@ -465,15 +635,43 @@ function restorePracticeUI() {
 // ============================================================
 // 导航与解锁
 // ============================================================
+// 进入第 index 章的门槛：前面的每一章都必须「视频看完 + 该章任务完成」
 function canNavigateTo(index) {
   if (index === 0) return { ok: true };
-  if (index >= 1 && !chapterQuizDone[0]) return { ok: false, msg: '请先完成第 1 章的所有测验题（全部答对）' };
-  if (index >= 2 && !chapterQuizDone[1]) return { ok: false, msg: '请先完成第 2 章的所有测验题（全部答对）' };
-  if (index >= 3 && !practiceSubmitted) return { ok: false, msg: '请先完成第 3 章的家长沟通模拟练习并提交回答' };
-  if (index >= 3 && practiceScore < 60) return { ok: false, msg: '第 3 章练习得分 ' + practiceScore + ' 分，尚未通过，请参考要点修改后重新提交' };
-  if (index >= 4 && !chapterQuizDone[3]) return { ok: false, msg: '请先完成第 4 章的所有测验题（全部答对）' };
-  if (index >= 5 && !chapterQuizDone[4]) return { ok: false, msg: '请先完成第 5 章的所有测验题（全部答对）' };
+  for (let i = 0; i < index; i++) {
+    const gate = chapterGate(i);
+    if (!gate.ok) return { ok: false, msg: '请先完成第 ' + (i + 1) + ' 章：' + gate.msg };
+  }
   return { ok: true };
+}
+
+// 单章通过条件：① 本章视频全部完整观看 ② 该章任务完成（测验/练习）
+function chapterGate(i) {
+  const left = chapterVideosLeft(i);
+  if (left > 0) {
+    return { ok: false, msg: '还有 ' + left + ' 段视频未完整观看（视频不可拖动快进）' };
+  }
+  if (i === 2) {
+    // 第 3 章：沉浸式沟通练习，需提交且得分达标
+    if (!practiceSubmitted) return { ok: false, msg: '家长沟通模拟练习尚未提交' };
+    if (practiceScore < 60) return { ok: false, msg: '练习得分 ' + practiceScore + ' 分，尚未通过，请参考要点修改后重新提交' };
+    return { ok: true };
+  }
+  const qs = chapterQuizzes[i] || [];
+  if (qs.length === 0) return { ok: true };
+  if (!chapterQuizDone[i]) return { ok: false, msg: '测验尚未全部答对（' + countChapterQuizCorrect(i) + '/' + qs.length + '）' };
+  return { ok: true };
+}
+
+// 已答对的题数（用于给学员进度反馈，不泄露答案）
+function countChapterQuizCorrect(chIdx) {
+  const qs = chapterQuizzes[chIdx] || [];
+  let n = 0;
+  qs.forEach((q, qi) => {
+    const rec = chapterQuizAnswers[chIdx + '_' + qi];
+    if (rec && rec.isCorrect) n++;
+  });
+  return n;
 }
 
 function navigateTo(index) {
@@ -927,6 +1125,8 @@ function saveProgress() {
     finalMessages: finalMessages,
     finalRound: finalRound,
     finalAiScoring: false,
+    videoWatched: [...videoWatched],
+    videoMaxTime: videoMaxTime,
     currentSection: currentSection
   };
   try { localStorage.setItem(LS_PREFIX + '_progress', JSON.stringify(state)); } catch (e) {}
@@ -951,6 +1151,17 @@ function loadProgress() {
       finalConversationStarted = saved.finalConversationStarted || false;
       finalMessages = saved.finalMessages || [];
       finalRound = saved.finalRound || 0;
+      videoWatched = new Set(saved.videoWatched || []);
+      // 旧数据没有视频字段时，已通过章节视为视频已看（避免老学员被新规则卡住）
+      if (!saved.videoWatched) {
+        videoMeta.forEach((m) => {
+          const passed = (m.chIdx === 2)
+            ? (saved.practiceSubmitted && (saved.practiceScore || 0) >= 60)
+            : !!(saved.chapterQuizDone || [])[m.chIdx];
+          if (passed) videoWatched.add(m.idx);
+        });
+      }
+      videoMaxTime = saved.videoMaxTime || {};
       currentSection = saved.currentSection || 0;
       // 兼容旧数据：有完成标记但没有答题记录 → 重置测验状态
       const hasDoneButNoAnswers = chapterQuizDone.some(d => d) && Object.keys(chapterQuizAnswers).length === 0;
@@ -968,6 +1179,7 @@ function loadProgress() {
       }
       restoreFillUI();
       restoreFinalConversation();
+      restoreVideoUI();
       document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
       const section = document.querySelector('.section[data-section="' + currentSection + '"]');
       if (section) section.classList.add('active');

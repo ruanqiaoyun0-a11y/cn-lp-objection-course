@@ -117,6 +117,17 @@ def main():
         problems.append('缺少填空题 DOM 生成模板')
     if 'submitFill' not in js:
         problems.append('缺少填空题提交处理函数')
+    # 视频完整观看解锁规则
+    for token in ('initVideoTracking', 'attachVideoGuards', 'videoMaxTime',
+                  'chapterVideosLeft', 'chapterGate', 'goNext'):
+        if token not in js:
+            problems.append('缺少视频解锁逻辑：%s' % token)
+    if "'seeking'" not in js:
+        problems.append('缺少禁止拖动（seeking 拦截）逻辑')
+    if 'video-status-bar' not in css:
+        problems.append('缺少视频观看状态条样式 .video-status-bar')
+    if 'video-flag' not in css:
+        problems.append('缺少视频观看角标样式 .video-flag')
     # 明文密钥
     if re.search(r'sk-[A-Za-z0-9]{20,}', html):
         problems.append('严重：index.html 中出现明文密钥 sk-...')

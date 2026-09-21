@@ -3,9 +3,24 @@
    ============================================================ */
 
 /* 视频 */
-.video-wrapper{margin:24px 0}
+.video-wrapper{margin:24px 0;position:relative}
 .video-label{font-size:14px;font-weight:600;color:var(--text);margin-bottom:10px}
 video{width:100%;border-radius:var(--radius-sm);background:#000;display:block}
+
+/* 视频观看状态角标 */
+.video-flag{display:inline-block;font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;
+  background:#FEF3C7;color:#B45309;border:1px solid #FCD34D;margin-bottom:8px}
+.video-flag.done{background:#ECFDF5;color:#065F46;border-color:#A7F3D0}
+
+/* 章节视频观看进度条 */
+.video-status-bar{font-size:13px;line-height:1.7;padding:10px 14px;border-radius:8px;margin:20px 0;
+  background:#FFFBEB;border-left:4px solid var(--accent)}
+.video-status-bar .vs-ok{color:#065F46;font-weight:600}
+.video-status-bar .vs-pending{color:#92400E;font-weight:600}
+
+/* 侧边栏锁定项：加锁图标与禁止指针，并在 hover 时提示原因 */
+.nav-section.locked{cursor:not-allowed;opacity:.6}
+.nav-section.locked .nav-icon::after{content:'🔒';font-size:11px;margin-left:2px}
 
 /* 话术模板（可填空位） */
 .script-tpl{background:#F1F5F9;border-left:4px solid var(--primary);padding:16px 20px;border-radius:8px;font-size:14px;line-height:2;color:#334155;margin:14px 0}
@@ -85,4 +100,7 @@ table tbody tr:nth-child(even) td{background:#F8FAFC}
   .fill-card{padding:18px 16px}
   .fill-row{flex-direction:column;align-items:stretch}
   .fill-row .btn,.fill-input{width:100%}
+
+  /* 视频状态条窄屏收紧内边距 */
+  .video-status-bar{font-size:12.5px;padding:10px 12px}
 }
