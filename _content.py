@@ -7,7 +7,7 @@
 
 COURSE_TITLE = '异议处理实战'
 LS_PREFIX = 'cn_lp_objection'
-ORG_NAME = 'VIPTHINK'
+ORG_NAME = '豌豆思维'
 
 # ============================================================
 # 第一章：认识异议与四步法

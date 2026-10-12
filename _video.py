@@ -62,7 +62,7 @@ h1{position:absolute;top:96px;left:64px;right:64px;font-size:48px;font-weight:80
 <h1>__TITLE__</h1>
 <div class="sub">__SUB__</div>
 __BODY__
-<div class="foot"><span>《异议处理实战》 · 班主任（LP）微课</span><span>VIPTHINK</span></div>
+<div class="foot"><span>《异议处理实战》 · 班主任（LP）微课</span><span>豌豆思维</span></div>
 </body></html>'''
 
 
