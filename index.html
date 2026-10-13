@@ -300,6 +300,36 @@ table tbody tr:nth-child(even) td{background:#F8FAFC}
   .video-status-bar{font-size:12.5px;padding:10px 12px}
 }
 
+/* 视频进度信息条：已看 % / 已看时长 / 剩余时长（进度条可自由拖动回看） */
+.video-progress-info{margin:10px 0 22px;padding:12px 16px;border-radius:8px;
+  background:#F8FAFC;border:1px solid var(--border)}
+.video-progress-info .vp-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;font-size:13px;color:var(--text-secondary)}
+.video-progress-info .vp-label{font-weight:700;color:var(--text)}
+.video-progress-info .vp-num strong{color:var(--primary);font-size:14px}
+.video-progress-info .vp-left{margin-left:auto;color:var(--text-secondary)}
+.video-progress-info .vp-track{height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin-top:8px}
+.video-progress-info .vp-fill{height:100%;background:var(--primary);border-radius:3px;transition:width .3s ease}
+.video-progress-info .vp-fill.done{background:var(--success,#10b981)}
+.video-progress-info .vp-tip{margin-top:8px;font-size:12px;color:var(--text-secondary);line-height:1.6}
+.video-progress-info .vp-hint{font-size:13px;color:var(--text-secondary)}
+
+/* 章节计划时间条：计划时长 vs 实际停留用时 */
+.chapter-plan-bar{margin:0 0 20px;padding:12px 16px;border-radius:8px;
+  background:#EEF2FF;border-left:4px solid var(--primary)}
+.chapter-plan-bar .cp-row{display:flex;flex-wrap:wrap;align-items:center;gap:12px;font-size:13px;color:var(--text-secondary)}
+.chapter-plan-bar .cp-label{font-weight:700;color:var(--primary-dark,var(--primary))}
+.chapter-plan-bar .cp-spent{font-weight:600;color:var(--text)}
+.chapter-plan-bar .cp-spent.over{color:#B45309}
+.chapter-plan-bar .cp-rest{margin-left:auto;font-size:12px}
+.chapter-plan-bar .cp-track{height:6px;background:#DBEAFE;border-radius:3px;overflow:hidden;margin-top:8px}
+.chapter-plan-bar .cp-fill{height:100%;background:var(--primary);border-radius:3px;transition:width .4s ease}
+.chapter-plan-bar .cp-fill.over{background:#F59E0B}
+.chapter-plan-bar.over{background:#FFF7ED;border-left-color:#F59E0B}
+@media(max-width:1024px){
+  .video-progress-info .vp-left{margin-left:0}
+  .chapter-plan-bar .cp-rest{margin-left:0}
+}
+
 </style>
 </head>
 <body>
@@ -356,11 +386,19 @@ let chapterQuizAnswers = {};   // { 'chIdx_qi': { selected, isCorrect } }
 // 视频观看追踪：视频按 DOM 顺序编号，索引与所在章节一一对应
 // videoMeta[i] = { idx, chIdx, src }
 // videoWatched: Set<videoIdx> —— 已「完整观看」的视频
-// videoMaxTime: { videoIdx: seconds } —— 已连续观看到的最高播放位置
+// videoMaxTime: { videoIdx: seconds } —— 观看过的最高播放位置（支持自由拖动/回看）
+// videoLastPos: { videoIdx: seconds } —— 最后离开的播放位置（下次打开从这里继续）
 let videoMeta = [];
 let videoWatched = new Set();
 let videoMaxTime = {};
+let videoLastPos = {};
 const VIDEO_WATCH_RATIO = 0.95;   // 播放至 95% 即视为看完（末段黑屏/片尾不计）
+const VIDEO_MAX_RATE = APP.videoMaxRate || 1.25;   // 倍速上限：最快 1.25 倍速
+
+// 章节时间跟踪：每章计划时长（由 section.duration 解析）+ 实际停留用时
+let sectionPlanSeconds = [];
+let chapterTimeSpent = {};
+let planWarned = {};
 let fillAnswers = {};          // { idx: { value, correct } } —— 终极考核填空题
 let fillDone = false;
 let practiceSubmitted = false;
@@ -402,6 +440,29 @@ function guardHost() {
   return true;
 }
 
+// ---- 时间工具（视频进度 / 章节计划）----
+// 秒 → mm:ss
+function fmtTime(sec) {
+  if (!isFinite(sec) || sec < 0) sec = 0;
+  const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
+  return m + ':' + String(s).padStart(2, '0');
+}
+// 秒 → "12 分 30 秒"
+function fmtMinSec(sec) {
+  if (!isFinite(sec) || sec < 0) sec = 0;
+  const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
+  return m > 0 ? (m + ' 分 ' + s + ' 秒') : (s + ' 秒');
+}
+// 计划时长字符串 → 分钟数："约 47 分钟"→47；"8-10 分钟"→10；"3-5分钟"→5；无数字→0
+function planMinutes(str) {
+  const s = String(str || '');
+  const m = s.match(/(\d+)\s*(?:[-~～至]\s*(\d+))?\s*分钟/);
+  if (m) return Math.max(parseInt(m[1], 10), m[2] ? parseInt(m[2], 10) : 0);
+  const h = s.match(/(\d+)\s*(?:个)?\s*小时/);
+  if (h) return parseInt(h[1], 10) * 60;
+  return 0;
+}
+
 let studySeconds = 0; let timerInterval = null;
 
 // ============================================================
@@ -411,8 +472,11 @@ function init() {
   renderSidebar();
   renderSections();
   initVideoTracking();
+  // 章节计划时长（解析 section.duration），需先于 loadProgress 恢复本章用时
+  sectionPlanSeconds = courseData.sections.map(s => planMinutes(s.duration) * 60);
   loadProgress();
   startTimer();
+  startPlanTracking();
   loadNotes();
 }
 
@@ -481,7 +545,7 @@ function quizBlockFor(i, s) {
 // ============================================================
 // 视频完整观看追踪（解锁前置条件之一）
 // 规则：视频需播放至 95% 或触发 ended 才计为「已看完」；
-//      拖动进度条被禁止，快进会被拉回已连续观看的最高位置。
+//      进度条可自由拖动/回看，不做任何拉回；倍速最快 VIDEO_MAX_RATE。
 // ============================================================
 function initVideoTracking() {
   videoMeta = [];
@@ -504,30 +568,35 @@ function videoSrcName(v) {
 
 function attachVideoGuards(v, meta) {
   v.dataset.videoIdx = String(meta.idx);
-  // 禁止拖动：拖动后立刻回到「已连续观看的最高点」
-  v.addEventListener('seeking', () => {
-    const allow = videoMaxTime[meta.idx] || 0;
-    // 允许极小抖动（1 秒内），其余一律拉回
-    if (v.currentTime > allow + 1) {
-      v.currentTime = Math.min(allow, v.duration || allow);
-      if (!v.dataset.seekWarned || Date.now() - Number(v.dataset.seekWarned) > 4000) {
-        v.dataset.seekWarned = String(Date.now());
-        showToast('🔒 视频不可快进，请按顺序完整观看', 'warning');
+  // 允许自由拖动进度条：随时回看/定位，只刷新进度显示，不做任何拉回
+  v.addEventListener('seeking', () => { renderVideoProgress(meta); });
+  // 倍速钳制：超过上限自动拉回
+  v.addEventListener('ratechange', () => {
+    if (v.playbackRate > VIDEO_MAX_RATE + 0.001) {
+      v.playbackRate = VIDEO_MAX_RATE;
+      if (!v.dataset.rateWarned || Date.now() - Number(v.dataset.rateWarned) > 4000) {
+        v.dataset.rateWarned = String(Date.now());
+        showToast('⏱ 视频最快支持 ' + VIDEO_MAX_RATE + ' 倍速', 'warning');
       }
     }
   });
-  // 记录观看进度
+  // 记录观看进度（最高位用于解锁判定；最后位置用于续播）
   v.addEventListener('timeupdate', () => {
     const t = v.currentTime;
     if (!videoMaxTime[meta.idx] || t > videoMaxTime[meta.idx]) videoMaxTime[meta.idx] = t;
+    videoLastPos[meta.idx] = t;
     maybeMarkWatched(v, meta);
+    renderVideoProgress(meta);
   });
   v.addEventListener('ended', () => { markVideoWatched(meta); });
-  v.addEventListener('loadedmetadata', () => { renderVideoStatus(meta.chIdx); });
-  // 从已看位置继续播放（刷新后不从头再来）
+  v.addEventListener('loadedmetadata', () => { renderVideoStatus(meta.chIdx); renderVideoProgress(meta); });
+  // 打开页面时从上次离开的位置继续（只恢复一次，之后拖动/回看完全不干预）
+  let restored = false;
   v.addEventListener('play', () => {
-    const allow = videoMaxTime[meta.idx] || 0;
-    if (allow > 2 && Math.abs(v.currentTime - allow) > 2) v.currentTime = allow;
+    if (restored) return;
+    restored = true;
+    const last = videoLastPos[meta.idx] || videoMaxTime[meta.idx] || 0;
+    if (last > 2 && Math.abs(v.currentTime - last) > 2) v.currentTime = last;
   });
 }
 
@@ -596,11 +665,91 @@ function renderVideoStatus(chIdx) {
   }
   bar.innerHTML = allDone
     ? '<span class="vs-ok">🎬 本章 ' + mine.length + ' 段视频已全部完整观看</span>'
-    : '<span class="vs-pending">🔒 本章 ' + mine.length + ' 段视频已看完 ' + watched + ' 段，还剩 ' + (mine.length - watched) + ' 段需完整播放（不可拖动快进）</span>';
+    : '<span class="vs-pending">🎬 本章 ' + mine.length + ' 段视频已看完 ' + watched + ' 段，还剩 ' + (mine.length - watched) + ' 段 · 看满 95% 即计为看完（进度条可自由拖动回看，支持 ' + VIDEO_MAX_RATE + ' 倍速）</span>';
+}
+
+// 视频进度信息条：已看 %、已看 / 总时长、剩余时长（拖动回看时实时刷新）
+function renderVideoProgress(meta) {
+  const v = document.querySelector('video[data-video-idx="' + meta.idx + '"]');
+  if (!v) return;
+  const wrap = v.closest('.video-wrapper');
+  if (!wrap) return;
+  let box = wrap.querySelector('.video-progress-info');
+  if (!box) {
+    box = document.createElement('div');
+    box.className = 'video-progress-info';
+    wrap.appendChild(box);
+  }
+  const dur = v.duration;
+  if (!dur || !isFinite(dur) || dur <= 0) {
+    box.innerHTML = '<span class="vp-hint">⏱ 视频加载中…</span>';
+    return;
+  }
+  const done = videoWatched.has(meta.idx);
+  const seen = done ? dur : Math.min(videoMaxTime[meta.idx] || v.currentTime || 0, dur);
+  const pct = done ? 100 : Math.min(100, Math.round(seen / dur * 100));
+  const left = done ? 0 : Math.max(0, dur - seen);
+  if (meta._vpPct === pct && meta._vpDone === done) return;   // 节流：无变化不重建
+  meta._vpPct = pct; meta._vpDone = done;
+  box.innerHTML =
+    '<div class="vp-row"><span class="vp-label">' + (done ? '✅ 已完整观看' : '🎬 观看进度') + '</span>' +
+    '<span class="vp-num">已看 <strong>' + pct + '%</strong> · ' + fmtTime(seen) + ' / ' + fmtTime(dur) + '</span>' +
+    '<span class="vp-left">' + (left > 1 ? '剩余约 ' + fmtTime(left) : '已到片尾') + '</span></div>' +
+    '<div class="vp-track"><div class="vp-fill' + (done ? ' done' : '') + '" style="width:' + pct + '%"></div></div>' +
+    '<div class="vp-tip">进度条可自由拖动，随时回看前面的内容；拖动不影响本章完成判定，看满 95% 即可解锁下一章。</div>';
 }
 
 function restoreVideoUI() {
-  videoMeta.forEach((m) => { renderVideoStatus(m.chIdx); });
+  videoMeta.forEach((m) => { renderVideoStatus(m.chIdx); renderVideoProgress(m); });
+}
+
+// ============================================================
+// 章节时间跟踪：本章计划时长 vs 实际停留用时（确保按计划看完）
+// ============================================================
+function startPlanTracking() {
+  courseData.sections.forEach((s, i) => renderChapterPlan(i));
+  setInterval(() => {
+    if (document.hidden) return;                       // 切到后台不计时
+    const cur = currentSection;
+    chapterTimeSpent[cur] = (chapterTimeSpent[cur] || 0) + 1;
+    if (chapterTimeSpent[cur] % 5 === 0) { renderChapterPlan(cur); saveProgress(); }
+    maybeWarnPlan(cur);
+  }, 1000);
+}
+
+function maybeWarnPlan(chIdx) {
+  const plan = sectionPlanSeconds[chIdx] || 0;
+  if (!plan || planWarned[chIdx]) return;
+  if ((chapterTimeSpent[chIdx] || 0) >= plan) {
+    planWarned[chIdx] = true;
+    showToast('⏱ 第 ' + (chIdx + 1) + ' 章已到计划时长（约 ' + Math.round(plan / 60) + ' 分钟），可以继续或先歇一会儿', 'warning');
+    saveProgress();
+  }
+}
+
+// 渲染某章的「计划时长 / 已用时长」进度条（章节内容顶部）
+function renderChapterPlan(chIdx) {
+  const plan = sectionPlanSeconds[chIdx] || 0;
+  if (!plan) return;
+  const section = document.querySelector('.section[data-section="' + chIdx + '"]');
+  if (!section) return;
+  const spent = chapterTimeSpent[chIdx] || 0;
+  let bar = document.getElementById('chapterplan-' + chIdx);
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.className = 'chapter-plan-bar';
+    bar.id = 'chapterplan-' + chIdx;
+    section.insertBefore(bar, section.firstChild);
+  }
+  const pct = Math.min(100, Math.round(spent / plan * 100));
+  const over = spent >= plan;
+  const leftMin = Math.max(0, Math.ceil((plan - spent) / 60));
+  bar.classList.toggle('over', over);
+  bar.innerHTML =
+    '<div class="cp-row"><span class="cp-label">⏱ 本章计划 ' + Math.round(plan / 60) + ' 分钟</span>' +
+    '<span class="cp-spent' + (over ? ' over' : '') + '">已用 ' + fmtMinSec(spent) + '</span>' +
+    '<span class="cp-rest">' + (over ? '已达计划时长，可继续学习' : '还差约 ' + leftMin + ' 分钟') + '</span></div>' +
+    '<div class="cp-track"><div class="cp-fill' + (over ? ' over' : '') + '" style="width:' + pct + '%"></div></div>';
 }
 
 // ============================================================
@@ -620,7 +769,7 @@ function renderChapterQuiz(chIdx) {
   // 解锁规则说明（视频 + 测验双条件）
   const unlockNote = isFinal
     ? '本章为终极考核，需完成下方全部考核环节。'
-    : '🔓 解锁下一章需同时满足：① 本章视频全部完整观看（不可快进）② 本章测验全部答对。';
+    : '🔓 解锁下一章需同时满足：① 本章视频看满 95%（进度条可自由拖动回看）② 本章测验全部答对。';
   return '<div class="card" style="border-top:4px solid var(--primary);" id="chquizwrap-' + chIdx + '">' +
     '<h2 style="margin-bottom:8px;">' + title + '</h2>' +
     '<p style="margin:0 0 8px 0;font-size:13px;color:var(--text-secondary);background:#EEF2FF;border-left:3px solid var(--primary);padding:8px 12px;border-radius:4px">' + unlockNote + '</p>' +
@@ -989,7 +1138,7 @@ function canNavigateTo(index) {
 function chapterGate(i) {
   const left = chapterVideosLeft(i);
   if (left > 0) {
-    return { ok: false, msg: '还有 ' + left + ' 段视频未完整观看（视频不可拖动快进）' };
+    return { ok: false, msg: '还有 ' + left + ' 段视频未完整观看（看满 95% 即可）' };
   }
   if (i === 2) {
     // 第 3 章：沉浸式沟通练习，需提交且得分达标
@@ -1024,7 +1173,7 @@ function navigateTo(index) {
   if (section) section.classList.add('active');
   const navItem = document.querySelector('.nav-section[data-index="' + index + '"]');
   if (navItem) navItem.classList.add('active');
-  updateProgress(); updateNotesForSection(index); saveProgress();
+  updateProgress(); updateNotesForSection(index); renderChapterPlan(index); saveProgress();
   window.scrollTo({ top: 0, behavior: 'smooth' });
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('sidebarOverlay').classList.remove('show');
@@ -1467,6 +1616,9 @@ function saveProgress() {
     finalAiScoring: false,
     videoWatched: [...videoWatched],
     videoMaxTime: videoMaxTime,
+    videoLastPos: videoLastPos,
+    chapterTimeSpent: chapterTimeSpent,
+    planWarned: planWarned,
     currentSection: currentSection
   };
   try { localStorage.setItem(LS_PREFIX + '_progress', JSON.stringify(state)); } catch (e) {}
@@ -1502,6 +1654,9 @@ function loadProgress() {
         });
       }
       videoMaxTime = saved.videoMaxTime || {};
+      videoLastPos = saved.videoLastPos || {};
+      chapterTimeSpent = saved.chapterTimeSpent || {};
+      planWarned = saved.planWarned || {};
       currentSection = saved.currentSection || 0;
       // 兼容旧数据：有完成标记但没有答题记录 → 重置测验状态
       const hasDoneButNoAnswers = chapterQuizDone.some(d => d) && Object.keys(chapterQuizAnswers).length === 0;
@@ -1520,6 +1675,7 @@ function loadProgress() {
       restoreFillUI();
       restoreFinalConversation();
       restoreVideoUI();
+      courseData.sections.forEach((s, i) => renderChapterPlan(i));
       document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
       const section = document.querySelector('.section[data-section="' + currentSection + '"]');
       if (section) section.classList.add('active');
